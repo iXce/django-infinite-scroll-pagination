@@ -10,10 +10,12 @@ __all__ = ["SeekPaginator", "SeekPage", "EmptyPage"]
 
 class SeekPaginator(object):
 
-    def __init__(self, query_set, per_page, lookup_field):
+    def __init__(self, query_set, per_page, lookup_field, value_op = "lt", pk_op = "gt"):
         self.query_set = query_set
         self.per_page = per_page
         self.lookup_field = lookup_field
+        self.value_op = value_op
+        self.pk_op = pk_op
 
     def prepare_order(self):
         lookup_field_desc = "-%s" % self.lookup_field
@@ -33,10 +35,10 @@ class SeekPaginator(object):
         ORDER BY date DESC, id DESC
         """
         if self.lookup_field not in ("pk", "id"):
-            lookup = "%s__lte" % self.lookup_field
-            lookup_exclude = {self.lookup_field: value, "pk__gte": pk, }
+            lookup = "%s__%se" % (self.lookup_field, self.value_op)
+            lookup_exclude = {self.lookup_field: value, "pk__%se" % self.pk_op: pk, }
         else:
-            lookup = "%s__lt" % self.lookup_field
+            lookup = "%s__%s" % (self.lookup_field, self.value_op)
             lookup_exclude = None
 
         lookup_filter = {lookup: value, }
@@ -65,16 +67,17 @@ class SeekPaginator(object):
         if not object_list and value:
             raise EmptyPage("That page contains no results")
 
-        return SeekPage(object_list=object_list, number=value, paginator=self, has_next=has_next)
+        return SeekPage(object_list=object_list, number=value, paginator=self, has_next=has_next, lookup_field=self.lookup_field)
 
 
 class SeekPage(Page):
 
-    def __init__(self, object_list, number, paginator, has_next):
+    def __init__(self, object_list, number, paginator, has_next, lookup_field):
         super(SeekPage, self).__init__(object_list, number, paginator)
         self._has_next = has_next
         self._objects_left = None
         self._pages_left = None
+        self._lookup_field = lookup_field
 
     def __repr__(self):
         return '<Page value %s>' % self.number or ""
@@ -137,3 +140,6 @@ class SeekPage(Page):
 
     def next_page_pk(self):
         return self.object_list[-1].pk
+
+    def next_page_value(self):
+        return getattr(self.object_list[-1], self._lookup_field)
